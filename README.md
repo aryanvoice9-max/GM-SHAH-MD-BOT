@@ -128,6 +128,7 @@ Deploy **GM SHAH MD BOT** on your favorite hosting platform:
 | `TENOR_API_KEY` | Optional, for GIF search |
 | `WEATHER_API_KEY` | Optional, for weather |
 | `IMGBB_API_KEY` | Optional, for image uploads |
+| `LEPTON_API_KEY` | Optional, for AI fallback |
 
 See [`.env-sample`](.env-sample) for the full list. Keep every key in environment variables, never in code.
 
@@ -144,6 +145,8 @@ See [`.env-sample`](.env-sample) for the full list. Keep every key in environmen
 | AI chat and image analysis | Active |
 | Group management and settings | Active |
 | Sticker maker and media converters | Active |
+| ATTP blinking text stickers (`.attp`) | Active |
+| Auto heart reactions (`.areact on/off`) | Active |
 | Fun commands and games | Active |
 | Search: web, lyrics, weather, country | Active |
 | Auto read, auto view, auto like | Active |
