@@ -5,19 +5,18 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node shah.js && node --loader ./preload.js index.js",
-    "dev": "node index.js",
-    "postinstall": "PUPPETEER_SKIP_DOWNLOAD=true npm rebuild sharp --force"
+    "start": "node --max-old-space-size=200 index.js",
+    "dev": "node --max-old-space-size=200 index.js"
   },
   "engines": {
-    "node": ">=20.x <=24.x",
+    "node": ">=20.0.0 <=24.x",
     "npm": ">=9.x"
   },
   "author": "GM Shah MD",
   "license": "MIT",
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "git+https://lyfe00011-admin@bitbucket.org/lyfe00011/baileys.git",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "@xaviabot/fb-downloader": "^1.0.14",
     "adm-zip": "0.5.16",
     "aptoide_scrapper_fixed": "1.0.2",
@@ -36,7 +35,6 @@
     "mumaker": "^2.0.0",
     "nayan-api-servers": "^2.4.8",
     "nayan-media-downloaders": "^0.1.8",
-    "node-catbox": "4.2.0",
     "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
     "node-webpmux": "^3.2.1",
@@ -58,7 +56,6 @@
     "ffmpeg-static": "5.2.0",
     "fluent-ffmpeg": "^2.1.2",
     "jimp": "^1.6.0",
-    "puppeteer": "^23.1.1",
     "sharp": "^0.33.5"
   },
   "overrides": {

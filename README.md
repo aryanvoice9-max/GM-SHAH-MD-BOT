@@ -59,9 +59,10 @@ Then deploy with your preferred method:
 Link your WhatsApp securely with the pairing code shown in your deployment console:
 
 1. Start the deployment and watch the console.
-2. A pairing code appears in the console.
+2. The pairing code **GMSHAH49** appears in the console.
 3. On your phone, open **WhatsApp → Settings → Linked Devices → Link with phone number instead**.
-4. Enter the pairing code. When the console confirms the connection, the bot is live.
+4. Enter the pairing code. If it expires, wait for the next code printed in the console; do not restart the bot.
+5. When the console confirms the connection, the bot is live.
 
 > Use a **second WhatsApp number** for the bot, never your main personal number.
 
@@ -86,12 +87,14 @@ Deploy **GM SHAH MD BOT** on your favorite hosting platform:
 1. Create a new **Node.js** deployment on [Bot-Hosting.net](https://bot-hosting.net).
 2. Choose **GitHub** as the source and select this repository, branch `main` — or upload the ZIP above.
 3. Make sure `index.js` and `package.json` sit at the deployment root (`/home/container/index.js`).
-4. Set **Node version 20** in Startup settings.
-5. Install command:
+4. Set **Node version 22** in Startup settings. Node 20-24 are supported; Node 22 is recommended for the free panel.
+5. Install command for the free panel (256 MB RAM / 512 MB storage):
 
    ```bash
-   npm install --legacy-peer-deps
+   npm install --legacy-peer-deps --omit=dev --no-audit --no-fund
    ```
+
+   Do not add `--omit=optional`: sticker and media commands need the optional `ffmpeg-static`, `fluent-ffmpeg`, `jimp`, and `sharp` packages.
 
 6. Start command:
 

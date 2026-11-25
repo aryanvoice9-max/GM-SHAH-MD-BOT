@@ -18,6 +18,7 @@ import {
 } from './bc.js'
 import { 
   default as makeWASocket, 
+  Browsers,
   DisconnectReason, 
   fetchLatestBaileysVersion, 
   useMultiFileAuthState, 
@@ -370,50 +371,122 @@ function getOwnerJid() {
   return `${ownerNumber}@s.whatsapp.net`
 }
 
+let reconnectAttempts = 0
+let reconnectTimer = null
+let pairingTimer = null
+let pairingInFlight = false
+let isStarting = false
+
+function scheduleReconnect(reason) {
+  if (reconnectTimer) return
+  const delay = Math.min(60000, 5000 * (2 ** Math.min(reconnectAttempts, 4)))
+  reconnectAttempts += 1
+  logConnection('reconnecting', { reason, attempt: reconnectAttempts, delay: Math.round(delay / 1000) })
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    start()
+  }, delay)
+}
+
 async function start() {
+  if (isStarting) return
+  isStarting = true
   try {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
-    const { version } = await fetchLatestBaileysVersion()
+    let version
+    try {
+      const latest = await fetchLatestBaileysVersion()
+      version = latest.version
+    } catch (error) {
+      logError('Baileys Version', null, null, error.message)
+    }
     sock = makeWASocket({
-      version,
+      ...(version ? { version } : {}),
       auth: state,
       logger: Pino({ level: 'silent' }),
-      browser: ['GM SHAH MD BOT', 'Chrome', '3.0.0'],
+      browser: Browsers?.ubuntu ? Browsers.ubuntu('Chrome') : ['Ubuntu', 'Chrome', '22.04.4'],
       printQRInTerminal: false,
-      markOnlineOnConnect: false
+      markOnlineOnConnect: false,
+      syncFullHistory: false,
+      connectTimeoutMs: 60000,
+      keepAliveIntervalMs: 10000
     })
     sock.ev.on('creds.update', saveCreds)
-    if (!state.creds.registered) {
-      const pairingNumber = String(CONFIG.OWNER_NUMBER || '').replace(/\D/g, '')
-      if (pairingNumber) {
-        setTimeout(async () => {
+
+    const isRegistered = () => Boolean(sock?.authState?.creds?.registered || state.creds.registered || sock?.user?.id)
+    const schedulePairingCode = (delay = 5000) => {
+      if (isRegistered()) return
+      if (pairingTimer) clearTimeout(pairingTimer)
+      pairingTimer = setTimeout(async () => {
+        pairingTimer = null
+        if (isRegistered()) return
+        if (pairingInFlight) {
+          schedulePairingCode(30000)
+          return
+        }
+
+        const pairingNumber = String(CONFIG.OWNER_NUMBER || '').replace(/\D/g, '')
+        if (!pairingNumber) {
+          console.log('⚠️ Set OWNER_NUMBER in the panel Environment to receive a pairing code.')
+          return
+        }
+
+        pairingInFlight = true
+        try {
+          let pairingCode
           try {
-            const pairingCode = await sock.requestPairingCode(pairingNumber)
-            console.log(`\n🔑 PAIRING CODE: ${pairingCode}\nEnter this code in WhatsApp → Settings → Linked Devices → Link with phone number instead.\n`)
-          } catch (error) {
-            logError('Pairing Code', null, null, error.message)
+            pairingCode = await sock.requestPairingCode(pairingNumber, 'GMSHAH49')
+          } catch (customError) {
+            logError('Custom Pairing Code', null, null, customError.message)
+            pairingCode = await sock.requestPairingCode(pairingNumber)
           }
-        }, 3000)
-      } else {
-        console.log('⚠️ Set OWNER_NUMBER in the panel Environment to receive a pairing code.')
-      }
+          console.log(`\n🔑 PAIRING CODE: ${pairingCode}\nEnter this code in WhatsApp → Settings → Linked Devices → Link with phone number instead.\nIf it expires, wait for the next printed code. Do not restart the bot.\n`)
+        } catch (error) {
+          logError('Pairing Code', null, null, error.message)
+        } finally {
+          pairingInFlight = false
+          if (!isRegistered()) schedulePairingCode(120000)
+        }
+      }, delay)
     }
+    schedulePairingCode()
     sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
       if (connection === 'close') {
+        if (pairingTimer) {
+          clearTimeout(pairingTimer)
+          pairingTimer = null
+        }
         const r = new Boom(lastDisconnect?.error)?.output?.statusCode
         let reason = 'Unknown'
         if (r === DisconnectReason.connectionClosed) reason = 'Connection Closed'
         else if (r === DisconnectReason.connectionLost) reason = 'Connection Lost'
         else if (r === DisconnectReason.restartRequired) reason = 'Restart Required'
         else if (r === DisconnectReason.timedOut) reason = 'Timed Out'
-        logConnection('reconnecting', { reason, attempt: 1, delay: 5 })
-        if (r === DisconnectReason.connectionClosed || r === DisconnectReason.connectionLost || r === DisconnectReason.restartRequired || r === DisconnectReason.timedOut) {
-          setTimeout(start, 5000)
+        else if (r === DisconnectReason.badSession) reason = 'Bad Session'
+        else if (r === DisconnectReason.connectionReplaced) reason = 'Connection Replaced'
+        else if (r === DisconnectReason.unavailableService) reason = 'Service Unavailable'
+        else if (r === DisconnectReason.multideviceMismatch) reason = 'Multi-device Mismatch'
+        else if (r === DisconnectReason.forbidden) reason = 'Forbidden'
+        else if (r === DisconnectReason.loggedOut) reason = 'Logged Out'
+
+        if (r === DisconnectReason.loggedOut) {
+          logError('Connection', null, null, 'Session logged out. Clearing auth so a new pairing code can be generated.')
+          try {
+            fs.rmSync(AUTH_DIR, { recursive: true, force: true })
+            fs.mkdirSync(AUTH_DIR, { recursive: true })
+          } catch (error) {
+            logError('Clear Auth', null, null, error.message)
+          }
+          scheduleReconnect(reason)
         } else {
-          logError('Connection', null, null, `Unrecoverable disconnect: ${lastDisconnect?.error}`)
-          process.exit(1)
+          scheduleReconnect(reason)
         }
       } else if (connection === 'open') {
+        reconnectAttempts = 0
+        if (pairingTimer) {
+          clearTimeout(pairingTimer)
+          pairingTimer = null
+        }
         console.log('✅ Connected to WhatsApp')
         if (sock.user?.id) {
           const cleanUserJid = getCleanJid(sock.user.id)
@@ -753,7 +826,9 @@ async function start() {
     })
   } catch (error) {
     logError('Bot Startup', null, null, error.message)
-    setTimeout(start, 10000)
+    scheduleReconnect('Startup Error')
+  } finally {
+    isStarting = false
   }
 }
 
