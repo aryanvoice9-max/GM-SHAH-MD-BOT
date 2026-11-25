@@ -37,7 +37,7 @@ async function xenc01(prompt) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer your-api-key'
+        'Authorization': process.env.LEPTON_API_KEY ? `Bearer ${process.env.LEPTON_API_KEY}` : ''
       },
       body: (prompt) => JSON.stringify({
         messages: [{ role: 'user', content: prompt }],
