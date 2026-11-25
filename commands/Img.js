@@ -22,35 +22,45 @@ function isImageUrl(url) {
     || /encrypted-tbn\d*\.gstatic\.com/i.test(url);
 }
 
-function parseGoogleHtml(html) {
+function unescapeGoogleHtml(html) {
+  return String(html || '')
+    .replace(/\\u003d/g, '=')
+    .replace(/\\u0026/g, '&')
+    .replace(/\\u002F/gi, '/')
+    .replace(/\\\//g, '/')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&');
+}
+
+function parseGoogleHtml(rawHtml) {
+  const html = unescapeGoogleHtml(rawHtml);
   const originals = [];
   const thumbnails = [];
 
-  const sizedRegex = /\["(https?:\/\/[^"]+)",(\d+),(\d+)\]/g;
-  let match;
-  while ((match = sizedRegex.exec(html)) !== null && originals.length < 40) {
-    const url = cleanUrl(match[1]);
-    if (/google\.com\/search|accounts\.google|www\.google\.com\/images\/branding/i.test(url)) continue;
-    if (!isImageUrl(url)) continue;
+  const addUrl = rawUrl => {
+    const url = cleanUrl(rawUrl).replace(/[",\]]+$/, '');
+    if (!/^https?:\/\//i.test(url)) return;
+    if (/google\.com\/search|accounts\.google|www\.google\.com\/images\/branding|ssl\.gstatic\.com\/gb|www\.gstatic\.com/i.test(url)) return;
+    if (!isImageUrl(url)) return;
     if (/encrypted-tbn\d*\.gstatic\.com/i.test(url)) {
       if (!thumbnails.includes(url)) thumbnails.push(url);
-      continue;
+      return;
     }
     if (!originals.includes(url)) originals.push(url);
-  }
+  };
+
+  let match;
+  const sizedRegex = /\["(https?:\/\/[^"]+)",(\d+),(\d+)\]/g;
+  while ((match = sizedRegex.exec(html)) !== null && originals.length < 40) addUrl(match[1]);
 
   const imgurlRegex = /imgurl=(https?%3A%2F%2F[^&"']+)/gi;
   while ((match = imgurlRegex.exec(html)) !== null && originals.length < 40) {
-    try {
-      const url = decodeURIComponent(match[1]);
-      if (isImageUrl(url) && !originals.includes(url)) originals.push(url);
-    } catch (_) {}
+    try { addUrl(decodeURIComponent(match[1])); } catch (_) {}
   }
 
-  const thumbRegex = /"(https:\/\/encrypted-tbn\d*\.gstatic\.com\/images\?q=tbn:[^"]+)"/g;
-  while ((match = thumbRegex.exec(html)) !== null && thumbnails.length < 40) {
-    const url = cleanUrl(match[1]);
-    if (!thumbnails.includes(url)) thumbnails.push(url);
+  const anyUrlRegex = /https?:\/\/[^\s"'<>\\]+/g;
+  while ((match = anyUrlRegex.exec(html)) !== null && (originals.length < 40 || thumbnails.length < 40)) {
+    addUrl(match[0]);
   }
 
   const results = originals.map((url, index) => ({ image: url, thumbnail: thumbnails[index] || null }));
