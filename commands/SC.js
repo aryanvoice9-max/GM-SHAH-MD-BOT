@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 export const commands = [
   {
@@ -9,8 +9,8 @@ export const commands = [
     execute: async ({ sock, from, config, msg }) => {
       const botName = config.BOT_NAME || 'GM SHAH MD BOT';
       const botVersion = config.BOT_VERSION || '3.0.0';
-      const repoApiUrl = 'https://api.github.com/repos/franceking1/GM SHAH MD BOT';
-      const repoUrl = 'https://flash-vercel-iota.vercel.app';
+      const repoApiUrl = 'https://api.github.com/repos/aryanvoice9-max/GM-SHAH-MD-BOT';
+      const repoUrl = 'https://github.com/aryanvoice9-max/GM-SHAH-MD-BOT';
 
       try {
         const { data } = await axios.get(repoApiUrl);

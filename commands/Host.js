@@ -1,7 +1,7 @@
 import os from 'os';
 import moment from 'moment-timezone';
-import { detectPlatform, formatUptime, MESSAGES } from '../france/index.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { detectPlatform, formatUptime, MESSAGES } from '../shah/index.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 const botStartTime = Date.now();
 

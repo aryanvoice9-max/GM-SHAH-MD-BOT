@@ -1,12 +1,12 @@
 import yts from 'yt-search';
 import axios from 'axios';
-import { API_CONFIG } from '../france/index.js';
+import { API_CONFIG } from '../shah/index.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 let ffmpegPath = null;
 

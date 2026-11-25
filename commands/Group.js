@@ -1,7 +1,7 @@
 
-import { getOnlineMembers } from '../france/Presence.js';
-import { MESSAGES } from '../france/config.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { getOnlineMembers } from '../shah/Presence.js';
+import { MESSAGES } from '../shah/config.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 export const commands = [
   {

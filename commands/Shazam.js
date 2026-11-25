@@ -3,8 +3,8 @@ import yts from 'yt-search';
 import fs from 'fs';
 import path from 'path';
 import { downloadContentFromMessage } from '@whiskeysockets/baileys';
-import { MESSAGES, API_CONFIG } from '../france/index.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { MESSAGES, API_CONFIG } from '../shah/index.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 const TEMP_DIR = path.join(process.cwd(), 'temp');
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });

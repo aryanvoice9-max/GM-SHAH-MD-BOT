@@ -3,7 +3,7 @@ import CONFIG from '../config.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

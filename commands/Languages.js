@@ -1,5 +1,5 @@
-import { LANGUAGES, setUserLang, getUserLang } from '../france/translator.js';
-import { t, translate, translateAIResponse } from '../france/translator.js';
+import { LANGUAGES, setUserLang, getUserLang } from '../shah/translator.js';
+import { t, translate, translateAIResponse } from '../shah/translator.js';
 
 export const commands = [
   {

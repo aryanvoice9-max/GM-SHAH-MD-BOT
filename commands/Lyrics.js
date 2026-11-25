@@ -1,6 +1,6 @@
 import axios from 'axios'
-import { MESSAGES } from '../france/index.js'
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js'
+import { MESSAGES } from '../shah/index.js'
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js'
 
 export const commands = [
 {

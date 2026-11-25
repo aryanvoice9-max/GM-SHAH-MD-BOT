@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { Sticker, StickerTypes } from 'wa-sticker-formatter';
 import yts from 'yt-search';
-import { MESSAGES } from '../france/index.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { MESSAGES } from '../shah/index.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 const BASE_URL = 'https://noobs-api.top';
 
