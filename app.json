@@ -1,7 +1,7 @@
 {
   "name": "GM SHAH MD BOT3",
   "description": "WhatsApp Multi-Device bot powered by Baileys",
-  "repository": "https://github.com/franceking1/GM SHAH MD BOT",
+  "repository": "https://github.com/aryanvoice9-max/GM-SHAH-MD-BOT",
   "keywords": ["whatsapp", "baileys", "bot", "gm-shah-md"],
   "env": {
     "MODE": {
