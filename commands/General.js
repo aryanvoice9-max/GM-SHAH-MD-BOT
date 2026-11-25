@@ -5,7 +5,7 @@ import {
   getRandomQuote,
   defineTerm,
   MESSAGES
-} from '../france/index.js';
+} from '../shah/index.js';
 
 import axios from 'axios';
 

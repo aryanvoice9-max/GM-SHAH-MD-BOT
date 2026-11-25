@@ -1,5 +1,5 @@
 import CONFIG from '../config.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 const styles = {
     10: {

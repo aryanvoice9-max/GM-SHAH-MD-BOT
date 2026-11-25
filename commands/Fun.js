@@ -11,7 +11,7 @@ import {
   delay,
   sleep,
   MESSAGES
-} from '../france/index.js';
+} from '../shah/index.js';
 
 import axios from 'axios';
 import { Sticker, StickerTypes } from 'wa-sticker-formatter';

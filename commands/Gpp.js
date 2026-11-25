@@ -2,7 +2,7 @@ import { downloadContentFromMessage } from '@whiskeysockets/baileys';
 import fs from 'fs-extra';
 import path from 'path';
 import { Jimp } from 'jimp';
-import { MESSAGES } from '../france/index.js';
+import { MESSAGES } from '../shah/index.js';
 
 const S_WHATSAPP_NET = 's.whatsapp.net';
 

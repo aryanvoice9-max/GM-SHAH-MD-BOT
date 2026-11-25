@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { API_CONFIG } from '../france/config.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { API_CONFIG } from '../shah/config.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 export const commands = [
     {

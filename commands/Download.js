@@ -22,7 +22,7 @@ import {
   delay,
   MESSAGES,
   LIMITS
-} from '../france/index.js';
+} from '../shah/index.js';
 
 import axios from 'axios';
 import getFBInfo from '@xaviabot/fb-downloader';

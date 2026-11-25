@@ -3,7 +3,7 @@ import {
   formatError,
   MESSAGES,
   LIMITS
-} from '../france/index.js';
+} from '../shah/index.js';
 
 import util from 'util';
 

@@ -3,7 +3,7 @@ import {
   delay,
   MESSAGES,
   LIMITS
-} from '../france/index.js';
+} from '../shah/index.js';
 
 import { downloadMediaMessage } from '@whiskeysockets/baileys';
 import fs from 'fs-extra';

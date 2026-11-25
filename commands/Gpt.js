@@ -1,5 +1,5 @@
-import { xenc01 } from '../france/Answers.js';
-import { MESSAGES } from '../france/config.js';
+import { xenc01 } from '../shah/Answers.js';
+import { MESSAGES } from '../shah/config.js';
 
 export const commands = [
   {

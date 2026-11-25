@@ -1,7 +1,7 @@
 import { 
   alldlDownload,
   MESSAGES
-} from '../france/index.js';
+} from '../shah/index.js';
 
 export const commands = [
   {

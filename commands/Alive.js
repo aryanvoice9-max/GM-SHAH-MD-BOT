@@ -3,7 +3,7 @@ import {
   formatUptime,
   MESSAGES,
   delay
-} from '../france/index.js';
+} from '../shah/index.js';
 
 import now from 'performance-now';
 

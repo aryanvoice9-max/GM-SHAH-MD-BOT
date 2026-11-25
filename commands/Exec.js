@@ -1,6 +1,6 @@
 import { exec as execPromise } from 'child_process';
 import { promisify } from 'util';
-import { MESSAGES } from '../france/index.js';
+import { MESSAGES } from '../shah/index.js';
 
 const exec = promisify(execPromise);
 

@@ -30,8 +30,8 @@ import {
   o3,
   gpt4oMini,
   llama33
-} from '../france/index.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+} from '../shah/index.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 import axios from 'axios';
 
 export const commands = [
