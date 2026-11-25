@@ -1,9 +1,38 @@
 import axios from 'axios';
+import { API_CONFIG } from '../shah/index.js';
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
   'Accept-Language': 'en-US,en;q=0.9'
 };
+
+function decodeHtml(text) {
+  return String(text || '')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+async function searchGoogle(query) {
+  const apiKey = API_CONFIG?.google?.apiKey || process.env.GOOGLE_API_KEY || '';
+  const cx = API_CONFIG?.google?.cx || process.env.GOOGLE_CX || '';
+  if (!apiKey || !cx) return [];
+
+  const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
+    params: { key: apiKey, cx, q: query, searchType: 'image', num: 10, safe: 'active' },
+    timeout: 30000,
+    validateStatus: () => true
+  });
+
+  const items = response.data?.items || [];
+  return items.map(item => ({
+    image: item.link,
+    thumbnail: item.image?.thumbnailLink || null,
+    title: item.title || ''
+  })).filter(item => /^https?:\/\//i.test(item.image || ''));
+}
 
 async function searchBing(query) {
   const response = await axios.get('https://www.bing.com/images/search', {
@@ -14,14 +43,32 @@ async function searchBing(query) {
   });
 
   const html = String(response.data || '');
-  const urls = [];
-  const regex = /"murl":"(https?:[^"]+)"/g;
-  let match;
-  while ((match = regex.exec(html)) !== null && urls.length < 30) {
-    const url = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-    if (!urls.includes(url)) urls.push(url);
+  const results = [];
+
+  const blockRegex = /m="(\{[^"]*\})"/g;
+  let block;
+  while ((block = blockRegex.exec(html)) !== null && results.length < 40) {
+    try {
+      const data = JSON.parse(decodeHtml(block[1]));
+      if (data.murl) {
+        results.push({
+          image: String(data.murl).replace(/\\u0026/g, '&'),
+          thumbnail: data.turl || null,
+          title: data.t || ''
+        });
+      }
+    } catch (_) {}
   }
-  return urls.map(url => ({ image: url, thumbnail: null }));
+
+  if (!results.length) {
+    const urlRegex = /"murl":"(https?:[^"]+)"/g;
+    let match;
+    while ((match = urlRegex.exec(html)) !== null && results.length < 30) {
+      results.push({ image: match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/'), thumbnail: null, title: '' });
+    }
+  }
+
+  return results;
 }
 
 async function searchDuckDuckGo(query) {
@@ -44,7 +91,7 @@ async function searchDuckDuckGo(query) {
 
   const results = response.data?.results || [];
   return results
-    .map(item => ({ image: item.image, thumbnail: item.thumbnail }))
+    .map(item => ({ image: item.image, thumbnail: item.thumbnail, title: item.title || '' }))
     .filter(item => /^https?:\/\//i.test(item.image || ''));
 }
 
@@ -70,7 +117,7 @@ async function searchWikimedia(query) {
   return pages
     .map(page => {
       const info = page?.imageinfo?.[0] || {};
-      return { image: info.thumburl || info.url, thumbnail: info.thumburl || null };
+      return { image: info.thumburl || info.url, thumbnail: info.thumburl || null, title: page?.title || '' };
     })
     .filter(item => /^https?:\/\//i.test(item.image || '') && /\.(jpe?g|png|webp)(\?|$)/i.test(item.image));
 }
@@ -85,8 +132,26 @@ async function searchOpenverse(query) {
 
   const results = response.data?.results || [];
   return results
-    .map(item => ({ image: item.url, thumbnail: item.thumbnail }))
+    .map(item => ({ image: item.url, thumbnail: item.thumbnail, title: item.title || '' }))
     .filter(item => /^https?:\/\//i.test(item.image || ''));
+}
+
+function normalize(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function scoreResult(query, item) {
+  const q = normalize(query);
+  const tokens = q.split(' ').filter(token => token.length > 2);
+  const haystack = normalize(`${item.title || ''} ${item.image || ''}`);
+
+  let score = 0;
+  if (q && haystack.includes(q)) score += 100;
+  for (const token of tokens) {
+    if (haystack.includes(token)) score += 20;
+  }
+  if (tokens.length && tokens.every(token => haystack.includes(token))) score += 50;
+  return score;
 }
 
 async function downloadImage(url) {
@@ -128,24 +193,35 @@ export const commands = [
         await sock.sendMessage(from, { text: `🖼️ Searching photos for: *${query}*` }, { quoted: msg });
 
         const sources = [
+          ['Google', searchGoogle],
           ['Bing', searchBing],
           ['DuckDuckGo', searchDuckDuckGo],
           ['Wikimedia', searchWikimedia],
           ['Openverse', searchOpenverse]
         ];
 
-        let results = [];
+        const merged = [];
+        const seen = new Set();
+
         for (const [name, search] of sources) {
           try {
-            results = await search(query);
-            console.log(`Img search ${name}: ${results.length} results for "${query}"`);
-            if (results.length) break;
+            const found = await search(query);
+            console.log(`Img search ${name}: ${found.length} results for "${query}"`);
+            for (const item of found) {
+              if (!item.image || seen.has(item.image)) continue;
+              seen.add(item.image);
+              merged.push({ ...item, source: name, score: scoreResult(query, item) });
+            }
           } catch (error) {
             console.error(`Img search ${name} failed:`, error?.message || error);
           }
+          if (merged.length >= 30) break;
         }
 
-        if (!results.length) {
+        merged.sort((a, b) => b.score - a.score);
+        console.log(`Img top results for "${query}":`, merged.slice(0, 5).map(item => `${item.source}:${item.score}:${item.title}`).join(' | '));
+
+        if (!merged.length) {
           await sock.sendMessage(from, {
             text: `❌ No photos found for: *${query}*\n\n⚡ Powered by ${botName}`
           }, { quoted: msg });
@@ -153,7 +229,7 @@ export const commands = [
         }
 
         let sent = 0;
-        for (const item of results) {
+        for (const item of merged) {
           if (sent >= 10) break;
 
           const urls = [item.image, item.thumbnail].filter(Boolean);
