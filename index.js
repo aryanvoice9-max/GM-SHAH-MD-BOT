@@ -191,7 +191,8 @@ function logCommand(senderName, senderNumber, command, location, groupName = '')
 const AUTH_DIR = path.join(__dirname, 'auth')
 if (!fs.existsSync(AUTH_DIR)) {
   fs.mkdirSync(AUTH_DIR, { recursive: true })
-  if (!CONFIG.SESSION) process.exit(1)
+}
+if (CONFIG.SESSION && !fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
   fs.writeFileSync(path.join(AUTH_DIR, 'creds.json'), Buffer.from(CONFIG.SESSION, 'base64'))
 }
 
@@ -382,6 +383,21 @@ async function start() {
       markOnlineOnConnect: false
     })
     sock.ev.on('creds.update', saveCreds)
+    if (!state.creds.registered) {
+      const pairingNumber = String(CONFIG.OWNER_NUMBER || '').replace(/\D/g, '')
+      if (pairingNumber) {
+        setTimeout(async () => {
+          try {
+            const pairingCode = await sock.requestPairingCode(pairingNumber)
+            console.log(`\n🔑 PAIRING CODE: ${pairingCode}\nEnter this code in WhatsApp → Settings → Linked Devices → Link with phone number instead.\n`)
+          } catch (error) {
+            logError('Pairing Code', null, null, error.message)
+          }
+        }, 3000)
+      } else {
+        console.log('⚠️ Set OWNER_NUMBER in the panel Environment to receive a pairing code.')
+      }
+    }
     sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
       if (connection === 'close') {
         const r = new Boom(lastDisconnect?.error)?.output?.statusCode
