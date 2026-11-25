@@ -3,69 +3,42 @@ import { API_CONFIG } from '../shah/index.js';
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Accept': 'text/html,application/xhtml+xml'
+  'Accept-Language': 'en-US,en;q=0.9'
 };
 
-function cleanUrl(url) {
-  return String(url || '')
-    .replace(/\\u003d/g, '=')
-    .replace(/\\u0026/g, '&')
-    .replace(/\\u002F/gi, '/')
-    .replace(/\\\//g, '/')
-    .replace(/&amp;/g, '&');
-}
-
-function isImageUrl(url) {
-  return /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)
-    || /googleusercontent\.com/i.test(url)
-    || /encrypted-tbn\d*\.gstatic\.com/i.test(url);
-}
-
-function unescapeGoogleHtml(html) {
-  return String(html || '')
-    .replace(/\\u003d/g, '=')
-    .replace(/\\u0026/g, '&')
-    .replace(/\\u002F/gi, '/')
-    .replace(/\\\//g, '/')
+function decodeHtml(text) {
+  return String(text || '')
     .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&');
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }
 
-function parseGoogleHtml(rawHtml) {
-  const html = unescapeGoogleHtml(rawHtml);
-  const originals = [];
-  const thumbnails = [];
+function normalize(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
 
-  const addUrl = rawUrl => {
-    const url = cleanUrl(rawUrl).replace(/[",\]]+$/, '');
-    if (!/^https?:\/\//i.test(url)) return;
-    if (/google\.com\/search|accounts\.google|www\.google\.com\/images\/branding|ssl\.gstatic\.com\/gb|www\.gstatic\.com/i.test(url)) return;
-    if (!isImageUrl(url)) return;
-    if (/encrypted-tbn\d*\.gstatic\.com/i.test(url)) {
-      if (!thumbnails.includes(url)) thumbnails.push(url);
-      return;
-    }
-    if (!originals.includes(url)) originals.push(url);
-  };
+function scoreResult(query, item) {
+  const q = normalize(query);
+  const tokens = q.split(' ').filter(token => token.length > 2);
+  const haystack = normalize(`${item.title || ''} ${item.page || ''} ${item.image || ''}`);
 
-  let match;
-  const sizedRegex = /\["(https?:\/\/[^"]+)",(\d+),(\d+)\]/g;
-  while ((match = sizedRegex.exec(html)) !== null && originals.length < 40) addUrl(match[1]);
-
-  const imgurlRegex = /imgurl=(https?%3A%2F%2F[^&"']+)/gi;
-  while ((match = imgurlRegex.exec(html)) !== null && originals.length < 40) {
-    try { addUrl(decodeURIComponent(match[1])); } catch (_) {}
+  let score = 0;
+  if (q && haystack.includes(q)) score += 100;
+  for (const token of tokens) {
+    if (haystack.includes(token)) score += 20;
   }
+  if (tokens.length && tokens.every(token => haystack.includes(token))) score += 50;
+  return score;
+}
 
-  const anyUrlRegex = /https?:\/\/[^\s"'<>\\]+/g;
-  while ((match = anyUrlRegex.exec(html)) !== null && (originals.length < 40 || thumbnails.length < 40)) {
-    addUrl(match[0]);
-  }
-
-  const results = originals.map((url, index) => ({ image: url, thumbnail: thumbnails[index] || null }));
-  if (!results.length) return thumbnails.map(url => ({ image: url, thumbnail: null }));
-  return results;
+function rankResults(query, results) {
+  const scored = results.map(item => ({ ...item, score: scoreResult(query, item) }));
+  const matched = scored.filter(item => item.score >= 20);
+  const pool = matched.length ? matched : scored;
+  pool.sort((a, b) => b.score - a.score);
+  return pool;
 }
 
 async function searchGoogleApi(query) {
@@ -82,37 +55,86 @@ async function searchGoogleApi(query) {
   const items = response.data?.items || [];
   return items.map(item => ({
     image: item.link,
-    thumbnail: item.image?.thumbnailLink || null
+    thumbnail: item.image?.thumbnailLink || null,
+    title: item.title || '',
+    page: item.image?.contextLink || ''
   })).filter(item => /^https?:\/\//i.test(item.image || ''));
 }
 
-async function searchGoogleImages(query) {
-  const attempts = [
-    { name: 'tbm', params: { q: query, tbm: 'isch', hl: 'en', safe: 'active' } },
-    { name: 'udm', params: { q: query, udm: '2', hl: 'en', safe: 'active' } },
-    { name: 'gbv', params: { q: query, tbm: 'isch', gbv: '1', hl: 'en', safe: 'active' } }
-  ];
+async function searchBing(query) {
+  const response = await axios.get('https://www.bing.com/images/search', {
+    params: { q: query, form: 'HDRSC2', first: '1' },
+    headers: HEADERS,
+    timeout: 30000,
+    validateStatus: () => true
+  });
 
-  for (const attempt of attempts) {
+  const html = String(response.data || '');
+  const results = [];
+  const seen = new Set();
+
+  const blockRegex = /m="(\{[^"]*\})"/g;
+  let block;
+  while ((block = blockRegex.exec(html)) !== null && results.length < 60) {
     try {
-      const response = await axios.get('https://www.google.com/search', {
-        params: attempt.params,
-        headers: HEADERS,
-        timeout: 30000,
-        validateStatus: () => true
+      const data = JSON.parse(decodeHtml(block[1]));
+      const image = String(data.murl || '').replace(/\\u0026/g, '&');
+      if (!image || seen.has(image)) continue;
+      seen.add(image);
+      results.push({
+        image,
+        thumbnail: data.turl || null,
+        title: data.t || '',
+        page: data.purl || ''
       });
+    } catch (_) {}
+  }
 
-      const html = String(response.data || '');
-      const blocked = /\/sorry\/|unusual traffic|captcha|consent\.google/i.test(html) ? ' blocked-page' : '';
-      const results = parseGoogleHtml(html);
-      console.log(`Img Google ${attempt.name}: HTTP ${response.status}, ${html.length} bytes, ${results.length} results${blocked} for "${query}"`);
-      if (results.length) return results;
-    } catch (error) {
-      console.error(`Img Google ${attempt.name} failed:`, error?.message || error);
+  if (!results.length) {
+    const urlRegex = /"murl":"(https?:[^"]+)"/g;
+    let match;
+    while ((match = urlRegex.exec(html)) !== null && results.length < 40) {
+      const image = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+      if (!seen.has(image)) {
+        seen.add(image);
+        results.push({ image, thumbnail: null, title: '', page: '' });
+      }
     }
   }
 
-  return [];
+  console.log(`Img Bing: HTTP ${response.status}, ${results.length} results for "${query}"`);
+  return rankResults(query, results);
+}
+
+async function searchYandex(query) {
+  const response = await axios.get('https://yandex.com/images/search', {
+    params: { text: query },
+    headers: HEADERS,
+    timeout: 30000,
+    validateStatus: () => true
+  });
+
+  const html = String(response.data || '').replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+  const results = [];
+  const seen = new Set();
+
+  const hrefRegex = /"img_href":"(https?:[^"]+)"/g;
+  let match;
+  while ((match = hrefRegex.exec(html)) !== null && results.length < 40) {
+    const image = match[1];
+    if (!seen.has(image)) {
+      seen.add(image);
+      results.push({ image, thumbnail: null, title: '', page: '' });
+    }
+  }
+
+  const thumbRegex = /"thumb":\{"url":"(https?:[^"]+)"/g;
+  const thumbs = [];
+  while ((match = thumbRegex.exec(html)) !== null && thumbs.length < 40) thumbs.push(match[1]);
+  results.forEach((item, index) => { item.thumbnail = thumbs[index] || null; });
+
+  console.log(`Img Yandex: HTTP ${response.status}, ${results.length} results for "${query}"`);
+  return results;
 }
 
 async function downloadImage(url) {
@@ -137,7 +159,7 @@ export const commands = [
   {
     name: 'img',
     aliases: ['image', 'pic'],
-    description: 'Search Google and send 10 photos for any word.',
+    description: 'Search and send 10 photos for any word.',
     category: 'Search',
     execute: async ({ sock, from, text, msg, config }) => {
       const botName = config?.BOT_NAME || 'GM SHAH MD BOT';
@@ -145,29 +167,34 @@ export const commands = [
 
       if (!query) {
         await sock.sendMessage(from, {
-          text: `🖼️ *Google Image Search*\n\nUsage: \`.img <word>\`\nExample: \`.img cat\`\n\n⚡ Powered by ${botName}`
+          text: `🖼️ *Image Search*\n\nUsage: \`.img <word>\`\nExample: \`.img cat\`\n\n⚡ Powered by ${botName}`
         }, { quoted: msg });
         return;
       }
 
       try {
-        await sock.sendMessage(from, { text: `🖼️ Searching Google photos for: *${query}*` }, { quoted: msg });
+        await sock.sendMessage(from, { text: `🖼️ Searching photos for: *${query}*` }, { quoted: msg });
+
+        const sources = [
+          ['Google', searchGoogleApi],
+          ['Bing', searchBing],
+          ['Yandex', searchYandex]
+        ];
 
         let results = [];
-        try {
-          results = await searchGoogleApi(query);
-          console.log(`Img Google API: ${results.length} results for "${query}"`);
-        } catch (error) {
-          console.error('Img Google API failed:', error?.message || error);
-        }
-
-        if (!results.length) {
-          results = await searchGoogleImages(query);
+        for (const [name, search] of sources) {
+          try {
+            results = await search(query);
+            console.log(`Img search ${name}: ${results.length} results for "${query}"`);
+            if (results.length) break;
+          } catch (error) {
+            console.error(`Img search ${name} failed:`, error?.message || error);
+          }
         }
 
         if (!results.length) {
           await sock.sendMessage(from, {
-            text: `❌ No photos found on Google for: *${query}*\n\n⚡ Powered by ${botName}`
+            text: `❌ No photos found for: *${query}*\n\n⚡ Powered by ${botName}`
           }, { quoted: msg });
           return;
         }
