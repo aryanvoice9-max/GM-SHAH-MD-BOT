@@ -33,14 +33,6 @@ function scoreResult(query, item) {
   return score;
 }
 
-function rankResults(query, results) {
-  const scored = results.map(item => ({ ...item, score: scoreResult(query, item) }));
-  const matched = scored.filter(item => item.score >= 20);
-  const pool = matched.length ? matched : scored;
-  pool.sort((a, b) => b.score - a.score);
-  return pool;
-}
-
 async function searchGoogleApi(query) {
   const apiKey = API_CONFIG?.google?.apiKey || process.env.GOOGLE_API_KEY || '';
   const cx = API_CONFIG?.google?.cx || process.env.GOOGLE_CX || '';
@@ -64,46 +56,74 @@ async function searchGoogleApi(query) {
 async function searchBing(query) {
   const response = await axios.get('https://www.bing.com/images/search', {
     params: { q: query, form: 'HDRSC2', first: '1' },
-    headers: HEADERS,
+    headers: { ...HEADERS, Referer: 'https://www.bing.com/' },
     timeout: 30000,
     validateStatus: () => true
   });
 
-  const html = String(response.data || '');
+  const rawHtml = String(response.data || '');
+  const html = decodeHtml(rawHtml);
   const results = [];
   const seen = new Set();
 
-  const blockRegex = /m="(\{[^"]*\})"/g;
-  let block;
-  while ((block = blockRegex.exec(html)) !== null && results.length < 60) {
-    try {
-      const data = JSON.parse(decodeHtml(block[1]));
-      const image = String(data.murl || '').replace(/\\u0026/g, '&');
-      if (!image || seen.has(image)) continue;
-      seen.add(image);
-      results.push({
-        image,
-        thumbnail: data.turl || null,
-        title: data.t || '',
-        page: data.purl || ''
-      });
-    } catch (_) {}
+  const add = data => {
+    const image = String(data.murl || '').replace(/\\u0026/g, '&');
+    if (!image || seen.has(image)) return;
+    seen.add(image);
+    results.push({
+      image,
+      thumbnail: data.turl || null,
+      title: data.t || '',
+      page: data.purl || ''
+    });
+  };
+
+  const objectRegex = /\{[^{}]*"murl":"https?:[^"]+"[^{}]*\}/g;
+  let match;
+  while ((match = objectRegex.exec(html)) !== null && results.length < 60) {
+    try { add(JSON.parse(match[0])); } catch (_) {}
+  }
+
+  if (!results.length) {
+    const blockRegex = /m="(\{[^"]*\})"/g;
+    while ((match = blockRegex.exec(rawHtml)) !== null && results.length < 60) {
+      try { add(JSON.parse(decodeHtml(match[1]))); } catch (_) {}
+    }
   }
 
   if (!results.length) {
     const urlRegex = /"murl":"(https?:[^"]+)"/g;
-    let match;
     while ((match = urlRegex.exec(html)) !== null && results.length < 40) {
-      const image = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-      if (!seen.has(image)) {
-        seen.add(image);
-        results.push({ image, thumbnail: null, title: '', page: '' });
-      }
+      add({ murl: match[1] });
     }
   }
 
-  console.log(`Img Bing: HTTP ${response.status}, ${results.length} results for "${query}"`);
-  return rankResults(query, results);
+  console.log(`Img Bing: HTTP ${response.status}, ${rawHtml.length} bytes, ${results.length} results for "${query}"`);
+  return results;
+}
+
+async function searchDuckDuckGo(query) {
+  const page = await axios.get(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`, {
+    headers: { ...HEADERS, Referer: 'https://duckduckgo.com/' },
+    timeout: 30000,
+    validateStatus: () => true
+  });
+
+  const html = String(page.data || '');
+  const vqd = html.match(/vqd=["']([^"']+)["']/)?.[1] || html.match(/vqd=([\d-]+)/)?.[1];
+  if (!vqd) return [];
+
+  const response = await axios.get('https://duckduckgo.com/i.js', {
+    params: { l: 'us-en', o: 'json', q: query, vqd, f: ',,,,,', p: '1', s: '0' },
+    headers: { ...HEADERS, Referer: 'https://duckduckgo.com/' },
+    timeout: 30000,
+    validateStatus: () => true
+  });
+
+  const results = response.data?.results || [];
+  return results
+    .map(item => ({ image: item.image, thumbnail: item.thumbnail, title: item.title || '', page: item.url || '' }))
+    .filter(item => /^https?:\/\//i.test(item.image || ''));
 }
 
 async function searchYandex(query) {
@@ -135,6 +155,47 @@ async function searchYandex(query) {
 
   console.log(`Img Yandex: HTTP ${response.status}, ${results.length} results for "${query}"`);
   return results;
+}
+
+async function searchWikimedia(query) {
+  const response = await axios.get('https://commons.wikimedia.org/w/api.php', {
+    params: {
+      action: 'query',
+      generator: 'search',
+      gsrsearch: `filetype:bitmap ${query}`,
+      gsrnamespace: '6',
+      gsrlimit: '30',
+      prop: 'imageinfo',
+      iiprop: 'url',
+      iiurlwidth: '1024',
+      format: 'json'
+    },
+    headers: HEADERS,
+    timeout: 30000,
+    validateStatus: () => true
+  });
+
+  const pages = Object.values(response.data?.query?.pages || {});
+  return pages
+    .map(page => {
+      const info = page?.imageinfo?.[0] || {};
+      return { image: info.thumburl || info.url, thumbnail: info.thumburl || null, title: page?.title || '', page: info.descriptionurl || '' };
+    })
+    .filter(item => /^https?:\/\//i.test(item.image || '') && /\.(jpe?g|png|webp)(\?|$)/i.test(item.image));
+}
+
+async function searchOpenverse(query) {
+  const response = await axios.get('https://api.openverse.org/v1/images/', {
+    params: { q: query, page_size: 20 },
+    headers: HEADERS,
+    timeout: 30000,
+    validateStatus: () => true
+  });
+
+  const results = response.data?.results || [];
+  return results
+    .map(item => ({ image: item.url, thumbnail: item.thumbnail, title: item.title || '', page: item.foreign_landing_url || '' }))
+    .filter(item => /^https?:\/\//i.test(item.image || ''));
 }
 
 async function downloadImage(url) {
@@ -178,19 +239,33 @@ export const commands = [
         const sources = [
           ['Google', searchGoogleApi],
           ['Bing', searchBing],
-          ['Yandex', searchYandex]
+          ['DuckDuckGo', searchDuckDuckGo],
+          ['Yandex', searchYandex],
+          ['Wikimedia', searchWikimedia],
+          ['Openverse', searchOpenverse]
         ];
 
-        let results = [];
+        const merged = [];
+        const seen = new Set();
+
         for (const [name, search] of sources) {
           try {
-            results = await search(query);
-            console.log(`Img search ${name}: ${results.length} results for "${query}"`);
-            if (results.length) break;
+            const found = await search(query);
+            console.log(`Img search ${name}: ${found.length} results for "${query}"`);
+            for (const item of found) {
+              if (!item.image || seen.has(item.image)) continue;
+              seen.add(item.image);
+              merged.push({ ...item, source: name, score: scoreResult(query, item) });
+            }
           } catch (error) {
             console.error(`Img search ${name} failed:`, error?.message || error);
           }
+          if (merged.length >= 40) break;
         }
+
+        const matched = merged.filter(item => item.score >= 20);
+        const results = (matched.length ? matched : merged).sort((a, b) => b.score - a.score);
+        console.log(`Img top results for "${query}":`, results.slice(0, 5).map(item => `${item.source}:${item.score}:${item.title}`).join(' | '));
 
         if (!results.length) {
           await sock.sendMessage(from, {
@@ -216,7 +291,17 @@ export const commands = [
               done = true;
               break;
             } catch (error) {
-              console.error('Img send failed:', error?.message || error);
+              console.error('Img download failed:', error?.message || error);
+              try {
+                await sock.sendMessage(from, {
+                  image: { url },
+                  caption: sent === 0 ? `🖼️ *${query}*\n\n⚡ Powered by ${botName}` : undefined
+                }, { quoted: msg });
+                done = true;
+                break;
+              } catch (sendError) {
+                console.error('Img send failed:', sendError?.message || sendError);
+              }
             }
           }
 
