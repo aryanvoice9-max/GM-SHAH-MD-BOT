@@ -24,6 +24,7 @@ import {
   downloadMediaMessage 
 } from '@whiskeysockets/baileys'
 import { handleDeletedMessage, handleEditedMessage, messageStore, cleanMessageStore } from './anti.js'
+import { addCommandReaction } from './lib/reactions.js'
 
 global.ALLOWED_USERS = loadSudoList()
 
@@ -502,6 +503,8 @@ async function start() {
           }
         }
         
+        await addCommandReaction(sock, msg)
+
         const typeMsg = Object.keys(msg.message || {})[0] || 'unknown'
         const from = msg.key.remoteJid
         const isGroup = from.endsWith('@g.us')
