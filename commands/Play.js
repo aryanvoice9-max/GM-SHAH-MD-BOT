@@ -1,197 +1,157 @@
 import yts from 'yt-search';
 import axios from 'axios';
 import { API_CONFIG } from '../shah/index.js';
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegStatic from 'ffmpeg-static';
-import fs from 'fs';
-import path from 'path';
-import { execSync } from 'child_process';
-import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
-let ffmpegPath = null;
+function pickAudioUrl(data) {
+  if (!data || typeof data !== 'object') return null;
 
-if (ffmpegStatic && fs.existsSync(ffmpegStatic)) {
-  ffmpegPath = ffmpegStatic;
-  try {
-    execSync(`${ffmpegPath} -version`);
-  } catch {
-    ffmpegPath = null;
-  }
-}
+  const candidates = [
+    data.data?.audio,
+    data.data?.audioUrl,
+    data.data?.audio_url,
+    data.data?.url,
+    data.data?.download,
+    data.data?.downloadUrl,
+    data.result?.audio,
+    data.result?.audioUrl,
+    data.result?.audio_url,
+    data.result?.url,
+    data.result?.download,
+    data.audio,
+    data.audioUrl,
+    data.audio_url,
+    data.url,
+    data.download,
+    data.downloadUrl
+  ];
 
-if (!ffmpegPath) {
-  try {
-    execSync('ffmpeg -version');
-    ffmpegPath = 'ffmpeg';
-  } catch {
-    try {
-      execSync('/usr/bin/ffmpeg -version');
-      ffmpegPath = '/usr/bin/ffmpeg';
-    } catch {
-      try {
-        execSync('/usr/local/bin/ffmpeg -version');
-        ffmpegPath = '/usr/local/bin/ffmpeg';
-      } catch {
-        ffmpegPath = null;
-      }
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && /^https?:\/\//i.test(candidate)) return candidate;
+    if (candidate && typeof candidate === 'object') {
+      const nested = candidate.url || candidate.link || candidate.audio || candidate.download;
+      if (typeof nested === 'string' && /^https?:\/\//i.test(nested)) return nested;
     }
   }
+
+  const lists = [data.data?.downloads, data.result?.downloads, data.downloads, data.data?.formats, data.formats];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    const audioItem = list.find(item => /audio|mp3|m4a/i.test(String(item?.type || item?.format || item?.quality || '')) && /^https?:\/\//i.test(String(item?.url || item?.link || '')));
+    if (audioItem) return audioItem.url || audioItem.link;
+    const first = list.find(item => /^https?:\/\//i.test(String(item?.url || item?.link || '')));
+    if (first) return first.url || first.link;
+  }
+
+  return null;
 }
 
-if (ffmpegPath) {
-  ffmpeg.setFfmpegPath(ffmpegPath);
+function pickInfo(data) {
+  const info = data?.data || data?.result || data || {};
+  return {
+    title: info.title || info.name || '',
+    channel: info.channel || info.author || info.uploader || '',
+    quality: info.quality || info.bitrate || '',
+    thumb: info.thumb || info.thumbnail || info.image || ''
+  };
+}
+
+async function fetchAudioLink(videoUrl) {
+  const base = API_CONFIG?.nayanApi?.youtube;
+  if (!base) throw new Error('Download API is not configured');
+
+  const apiUrl = `${base}?url=${encodeURIComponent(videoUrl)}`;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await axios.get(apiUrl, {
+        timeout: 60000,
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        validateStatus: () => true
+      });
+
+      const audioUrl = pickAudioUrl(response.data);
+      if (audioUrl) return { audioUrl, info: pickInfo(response.data) };
+
+      lastError = new Error(`Download API returned no audio link (HTTP ${response.status})`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Download API returned no audio link');
 }
 
 export const commands = [
   {
     name: 'play',
+    aliases: ['mp3', 'audio'],
     description: 'Search and download MP3 audio from YouTube (audio only).',
     category: 'Search',
     execute: async ({ sock, from, text, msg, config }) => {
-      const botName = config.BOT_NAME || 'GM SHAH MD BOT';
-      const botVersion = config.BOT_VERSION || '3.0.0';
+      const botName = config?.BOT_NAME || 'GM SHAH MD BOT';
+      const botVersion = config?.BOT_VERSION || '3.0.0';
+      const query = (text || '').trim();
 
-      if (!text) {
-        const noQueryMsg = await t(from, 'play', 'noQuery');
-        return sock.sendMessage(from, { text: `${noQueryMsg}\n\n⚡ Powered by ${botName} ${botVersion}` });
+      if (!query) {
+        await sock.sendMessage(from, {
+          text: `🎵 *Play Command*\n\nUsage: \`.play <song name>\`\nExample: \`.play Atif Aslam\`\n\n⚡ Powered by ${botName} ${botVersion}`
+        }, { quoted: msg });
+        return;
       }
 
       try {
-        if (!API_CONFIG?.nayanApi?.youtube) {
-          throw new Error('Nayan API not configured');
+        await sock.sendMessage(from, { text: '🔍 Searching...' }, { quoted: msg });
+
+        let video = null;
+        const directId = query.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/))([A-Za-z0-9_-]{6,})/)?.[1];
+        if (directId) {
+          video = { videoId: directId, title: query, thumbnail: `https://i.ytimg.com/vi/${directId}/hqdefault.jpg` };
+        } else {
+          const search = await yts(query);
+          video = search?.videos?.[0] || null;
         }
 
-        const searchingMsg = await t(from, 'play', 'searching');
-        await sock.sendMessage(from, { text: searchingMsg }, { quoted: msg });
-
-        const search = await yts(text);
-        const video = search.videos?.[0];
-
-        if (!video) {
-          const notFoundMsg = await t(from, 'play', 'notFound');
-          return sock.sendMessage(from, { text: `${notFoundMsg}\n\n⚡ Powered by ${botName} ${botVersion}` });
-        }
-
-        const videoUrl = `https://youtu.be/${video.videoId}`;
-        const apiUrl = `${API_CONFIG.nayanApi.youtube}?url=${encodeURIComponent(videoUrl)}`;
-
-        const downloadingMsg = await t(from, 'play', 'downloading');
-        await sock.sendMessage(from, { text: downloadingMsg }, { quoted: msg });
-
-        const response = await axios.get(apiUrl, {
-          timeout: API_CONFIG.nayanApi.timeout || 30000
-        });
-
-        if (!response.data?.status || !response.data?.data?.audio) {
-          const failedMsg = await t(from, 'play', 'failed');
-          return sock.sendMessage(from, { text: `${failedMsg}\n\n⚡ Powered by ${botName} ${botVersion}` });
-        }
-
-        const downloadLink = response.data.data.audio;
-        const videoInfo = response.data.data;
-
-        const safeTitle = (video.title || 'audio').replace(/[\\/:*?"<>|]/g, '');
-        const fileName = `${safeTitle}.mp3`;
-
-        const titleLabel = await t(from, 'play', 'title');
-        const durationLabel = await t(from, 'play', 'duration');
-        const viewsLabel = await t(from, 'play', 'views');
-        const uploadedLabel = await t(from, 'play', 'uploaded');
-        const channelLabel = await t(from, 'play', 'channel');
-        const qualityLabel = await t(from, 'play', 'quality');
-        const poweredLabel = await t(from, 'play', 'powered');
-
-        await sock.sendMessage(from, {
-          image: { url: video.thumbnail || videoInfo.thumb || 'https://via.placeholder.com/300' },
-          caption:
-            `*🎵 ${botName.toUpperCase()} SONG PLAYER*\n\n` +
-            `╭─❏ ${titleLabel} ${videoInfo.title || video.title}\n` +
-            `│ ${durationLabel} ${video.timestamp || 'N/A'}\n` +
-            `│ ${viewsLabel} ${video.views?.toLocaleString() || 'N/A'}\n` +
-            `│ ${uploadedLabel} ${video.ago || 'N/A'}\n` +
-            `│ ${channelLabel} ${videoInfo.channel || video.author?.name}\n` +
-            `│ ${qualityLabel} ${videoInfo.quality || '128'}kbps\n` +
-            `│ ${poweredLabel} ${botName}\n` +
-            `╰─────────────\n\n` +
-            `🔗 https://youtube.com/watch?v=${video.videoId}`
-        }, { quoted: msg });
-
-        const tempDir = process.env.TEMP_DIR || './temp';
-        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-
-        const audioRes = await axios.get(downloadLink, {
-          responseType: 'arraybuffer',
-          timeout: 30000,
-          headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-
-        if (!ffmpegPath) {
-          const sendingMsg = await t(from, 'play', 'sending');
-          await sock.sendMessage(from, { text: sendingMsg }, { quoted: msg });
+        if (!video?.videoId) {
           await sock.sendMessage(from, {
-            audio: audioRes.data,
-            mimetype: 'audio/mpeg',
-            fileName
+            text: `❌ No song found for: *${query}*\n\n⚡ Powered by ${botName} ${botVersion}`
           }, { quoted: msg });
           return;
         }
 
-        const inputPath = path.join(tempDir, `${Date.now()}.m4a`);
-        const outputPath = path.join(tempDir, `${Date.now()}.mp3`);
+        await sock.sendMessage(from, { text: '⬇️ Downloading audio...' }, { quoted: msg });
 
-        fs.writeFileSync(inputPath, audioRes.data);
+        const videoUrl = `https://youtu.be/${video.videoId}`;
+        const { audioUrl, info } = await fetchAudioLink(videoUrl);
 
-        const processingMsg = await t(from, 'play', 'processing');
-        await sock.sendMessage(from, { text: processingMsg }, { quoted: msg });
+        const title = info.title || video.title || 'Audio';
+        const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, '').slice(0, 80) || 'audio';
 
-        const conversionPromise = new Promise((resolve, reject) => {
-          ffmpeg(inputPath)
-            .audioBitrate(128)
-            .audioCodec('libmp3lame')
-            .toFormat('mp3')
-            .on('end', () => resolve())
-            .on('error', (err) => reject(err))
-            .save(outputPath);
-        });
+        await sock.sendMessage(from, {
+          image: { url: video.thumbnail || info.thumb || `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg` },
+          caption:
+            `*🎵 ${botName.toUpperCase()} SONG PLAYER*\n\n` +
+            `╭─❏ Title: ${title}\n` +
+            `│ Duration: ${video.timestamp || 'N/A'}\n` +
+            `│ Channel: ${info.channel || video.author?.name || 'N/A'}\n` +
+            `│ Quality: ${info.quality || '128'}kbps\n` +
+            `│ Powered: ${botName}\n` +
+            `╰─────────────\n\n` +
+            `🔗 https://youtube.com/watch?v=${video.videoId}`
+        }, { quoted: msg });
 
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('FFmpeg timeout')), 30000)
-        );
-
+        await sock.sendMessage(from, {
+          audio: { url: audioUrl },
+          mimetype: 'audio/mpeg',
+          fileName: `${safeTitle}.mp3`
+        }, { quoted: msg });
+      } catch (error) {
+        console.error('Play command error:', error?.message || error);
         try {
-          await Promise.race([conversionPromise, timeoutPromise]);
-          
-          const sendingMsg = await t(from, 'play', 'sending');
-          await sock.sendMessage(from, { text: sendingMsg }, { quoted: msg });
-          
           await sock.sendMessage(from, {
-            audio: fs.readFileSync(outputPath),
-            mimetype: 'audio/mpeg',
-            fileName
+            text: `❌ Failed to play this song. Please try again.\n\n⚡ Powered by ${botName} ${botVersion}`
           }, { quoted: msg });
-          
-          if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-          if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-        } catch (conversionError) {
-          if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-          if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-          
-          const sendingOriginalMsg = await t(from, 'play', 'sendingOriginal');
-          await sock.sendMessage(from, { text: sendingOriginalMsg }, { quoted: msg });
-          await sock.sendMessage(from, {
-            audio: audioRes.data,
-            mimetype: 'audio/mpeg',
-            fileName
-          }, { quoted: msg });
-        }
-
-      } catch (err) {
-        console.error('Play command error:', err.message);
-        if (err.response) {
-          console.error('Response data:', err.response.data);
-        }
-        const errorMsg = await t(from, 'play', 'error');
-        sock.sendMessage(from, { text: `${errorMsg} ${err.message || 'Unknown error'}\n\n⚡ Powered by ${botName} ${botVersion}` });
+        } catch (_) {}
       }
     }
   }

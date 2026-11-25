@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Sticker, StickerTypes } from 'wa-sticker-formatter';
 import yts from 'yt-search';
-import { MESSAGES } from '../shah/index.js';
+import { API_CONFIG, MESSAGES } from '../shah/index.js';
 import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 const BASE_URL = 'https://noobs-api.top';
@@ -351,63 +351,118 @@ export const commands = [
   },
   {
     name: 'ytmp4',
-    aliases: ['ytv', 'ytvideo'],
+    aliases: ['video', 'ytv', 'ytvideo'],
     description: 'Downloads a YouTube video.',
     category: 'Download',
     execute: async ({ sock, from, text, msg, config }) => {
-      const botName = config.BOT_NAME || 'GM SHAH MD BOT';
-      if (!text) {
-        const noTextMsg = await t(from, 'ytmp4', 'noText');
+      const botName = config?.BOT_NAME || 'GM SHAH MD BOT';
+      const query = (text || '').trim();
+      if (!query) {
         return sock.sendMessage(from, {
-          text: noTextMsg
+          text: `🎬 *Video Command*\n\nUsage: \`.video <video name or YouTube link>\`\nExample: \`.video Atif Aslam\``
         }, { quoted: msg });
       }
-      
-      try {
-        const search = await yts(text);
-        const video = search.videos[0];
-        if (!video) {
-          const noResultsMsg = await t(from, 'ytmp4', 'noResults');
-          return sock.sendMessage(from, {
-            text: noResultsMsg
-          }, { quoted: msg });
-        }
-        
-        const safeTitle = video.title.replace(/[\\/:*?"<>|]/g, '');
-        const fileName = `${safeTitle}.mp4`;
-        const apiURL = `${BASE_URL}/dipto/ytDl3?link=${encodeURIComponent(video.videoId)}&format=mp4`;
-        const response = await axios.get(apiURL);
-        const data = response.data;
-        
-        if (!data.downloadLink) {
-          const noLinkMsg = await t(from, 'ytmp4', 'noLink');
-          return sock.sendMessage(from, {
-            text: noLinkMsg
-          }, { quoted: msg });
-        }
-        
-        const captionMsg = await t(from, 'ytmp4', 'caption');
-        await sock.sendMessage(from, {
-          video: { url: data.downloadLink },
-          mimetype: 'video/mp4',
-          fileName,
-          caption: captionMsg,
-          contextInfo: {
-            forwardingScore: 1,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-              newsletterJid: '120363238139244263@newsletter',
-              newsletterName: botName,
-              serverMessageId: -1
-            }
+
+      const pickVideoUrl = (data) => {
+        if (!data || typeof data !== 'object') return null;
+        const candidates = [
+          data.downloadLink,
+          data.data?.video,
+          data.data?.videoUrl,
+          data.data?.url,
+          data.data?.download,
+          data.data?.downloadLink,
+          data.result?.video,
+          data.result?.videoUrl,
+          data.result?.url,
+          data.result?.download,
+          data.video,
+          data.videoUrl,
+          data.url,
+          data.download
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate === 'string' && /^https?:\/\//i.test(candidate)) return candidate;
+          if (candidate && typeof candidate === 'object') {
+            const nested = candidate.url || candidate.link || candidate.video || candidate.download;
+            if (typeof nested === 'string' && /^https?:\/\//i.test(nested)) return nested;
           }
+        }
+        const lists = [data.data?.downloads, data.result?.downloads, data.downloads, data.data?.formats, data.formats];
+        for (const list of lists) {
+          if (!Array.isArray(list)) continue;
+          const mp4 = list.find(item => /mp4|video/i.test(String(item?.type || item?.format || item?.quality || '')) && /^https?:\/\//i.test(String(item?.url || item?.link || '')));
+          if (mp4) return mp4.url || mp4.link;
+          const first = list.find(item => /^https?:\/\//i.test(String(item?.url || item?.link || '')));
+          if (first) return first.url || first.link;
+        }
+        return null;
+      };
+
+      try {
+        await sock.sendMessage(from, { text: '🔍 Searching...' }, { quoted: msg });
+
+        let video = null;
+        const directId = query.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/))([A-Za-z0-9_-]{6,})/)?.[1];
+        if (directId) {
+          video = { videoId: directId, title: query };
+        } else {
+          const search = await yts(query);
+          video = search?.videos?.[0] || null;
+        }
+
+        if (!video?.videoId) {
+          return sock.sendMessage(from, {
+            text: `❌ No video found for: *${query}*`
+          }, { quoted: msg });
+        }
+
+        await sock.sendMessage(from, { text: '⬇️ Downloading video...' }, { quoted: msg });
+
+        const videoUrl = `https://youtu.be/${video.videoId}`;
+        let downloadLink = null;
+
+        const nayanBase = API_CONFIG?.nayanApi?.youtube;
+        if (nayanBase) {
+          try {
+            const response = await axios.get(`${nayanBase}?url=${encodeURIComponent(videoUrl)}`, {
+              timeout: 60000,
+              headers: { 'User-Agent': 'Mozilla/5.0' },
+              validateStatus: () => true
+            });
+            downloadLink = pickVideoUrl(response.data);
+          } catch (_) {}
+        }
+
+        if (!downloadLink) {
+          const response = await axios.get(`${BASE_URL}/dipto/ytDl3?link=${encodeURIComponent(video.videoId)}&format=mp4`, {
+            timeout: 60000,
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            validateStatus: () => true
+          });
+          downloadLink = pickVideoUrl(response.data);
+        }
+
+        if (!downloadLink) {
+          return sock.sendMessage(from, {
+            text: '❌ Failed to download this video. Please try again.'
+          }, { quoted: msg });
+        }
+
+        const safeTitle = String(video.title || 'video').replace(/[\\/:*?"<>|]/g, '').slice(0, 80) || 'video';
+        await sock.sendMessage(from, {
+          video: { url: downloadLink },
+          mimetype: 'video/mp4',
+          fileName: `${safeTitle}.mp4`,
+          caption: `🎬 *${video.title || 'Video'}*\n\n⚡ Powered by ${botName}`
         }, { quoted: msg });
       } catch (err) {
-        console.error('Ytmp4 error:', err);
-        const errorMsg = await t(from, 'ytmp4', 'error');
-        await sock.sendMessage(from, {
-          text: errorMsg
-        }, { quoted: msg });
+        console.error('Video command error:', err?.message || err);
+        try {
+          await sock.sendMessage(from, {
+            text: '❌ Failed to download this video. Please try again.'
+          }, { quoted: msg });
+        } catch (_) {}
       }
     }
   }
