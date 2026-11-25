@@ -6,16 +6,7 @@ const HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9'
 };
 
-function decodeHtml(text) {
-  return String(text || '')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
-
-async function searchGoogle(query) {
+async function searchGoogleApi(query) {
   const apiKey = API_CONFIG?.google?.apiKey || process.env.GOOGLE_API_KEY || '';
   const cx = API_CONFIG?.google?.cx || process.env.GOOGLE_CX || '';
   if (!apiKey || !cx) return [];
@@ -29,129 +20,41 @@ async function searchGoogle(query) {
   const items = response.data?.items || [];
   return items.map(item => ({
     image: item.link,
-    thumbnail: item.image?.thumbnailLink || null,
-    title: item.title || ''
+    thumbnail: item.image?.thumbnailLink || null
   })).filter(item => /^https?:\/\//i.test(item.image || ''));
 }
 
-async function searchBing(query) {
-  const response = await axios.get('https://www.bing.com/images/search', {
-    params: { q: query, form: 'HDRSC2', first: '1' },
+async function searchGoogleImages(query) {
+  const response = await axios.get('https://www.google.com/search', {
+    params: { q: query, tbm: 'isch', hl: 'en', safe: 'active' },
     headers: HEADERS,
     timeout: 30000,
     validateStatus: () => true
   });
 
   const html = String(response.data || '');
-  const results = [];
+  const originals = [];
+  const thumbnails = [];
 
-  const blockRegex = /m="(\{[^"]*\})"/g;
-  let block;
-  while ((block = blockRegex.exec(html)) !== null && results.length < 40) {
-    try {
-      const data = JSON.parse(decodeHtml(block[1]));
-      if (data.murl) {
-        results.push({
-          image: String(data.murl).replace(/\\u0026/g, '&'),
-          thumbnail: data.turl || null,
-          title: data.t || ''
-        });
-      }
-    } catch (_) {}
+  const originalRegex = /\["(https?:\/\/[^"]+?\.(?:jpg|jpeg|png|webp)[^"]*)",\d+,\d+\]/gi;
+  let match;
+  while ((match = originalRegex.exec(html)) !== null && originals.length < 40) {
+    const url = match[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+    if (/google\.com|gstatic\.com/i.test(url)) continue;
+    if (!originals.includes(url)) originals.push(url);
   }
 
+  const thumbRegex = /"(https:\/\/encrypted-tbn0\.gstatic\.com\/images\?q=tbn:[^"]+)"/g;
+  while ((match = thumbRegex.exec(html)) !== null && thumbnails.length < 40) {
+    const url = match[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+    if (!thumbnails.includes(url)) thumbnails.push(url);
+  }
+
+  const results = originals.map((url, index) => ({ image: url, thumbnail: thumbnails[index] || null }));
   if (!results.length) {
-    const urlRegex = /"murl":"(https?:[^"]+)"/g;
-    let match;
-    while ((match = urlRegex.exec(html)) !== null && results.length < 30) {
-      results.push({ image: match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/'), thumbnail: null, title: '' });
-    }
+    return thumbnails.map(url => ({ image: url, thumbnail: null }));
   }
-
   return results;
-}
-
-async function searchDuckDuckGo(query) {
-  const page = await axios.get(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`, {
-    headers: { ...HEADERS, Referer: 'https://duckduckgo.com/' },
-    timeout: 30000,
-    validateStatus: () => true
-  });
-
-  const html = String(page.data || '');
-  const vqd = html.match(/vqd=["']([^"']+)["']/)?.[1] || html.match(/vqd=([\d-]+)/)?.[1];
-  if (!vqd) throw new Error('Image search token not found');
-
-  const response = await axios.get('https://duckduckgo.com/i.js', {
-    params: { l: 'us-en', o: 'json', q: query, vqd, f: ',,,,,', p: '1', s: '0' },
-    headers: { ...HEADERS, Referer: 'https://duckduckgo.com/' },
-    timeout: 30000,
-    validateStatus: () => true
-  });
-
-  const results = response.data?.results || [];
-  return results
-    .map(item => ({ image: item.image, thumbnail: item.thumbnail, title: item.title || '' }))
-    .filter(item => /^https?:\/\//i.test(item.image || ''));
-}
-
-async function searchWikimedia(query) {
-  const response = await axios.get('https://commons.wikimedia.org/w/api.php', {
-    params: {
-      action: 'query',
-      generator: 'search',
-      gsrsearch: `filetype:bitmap ${query}`,
-      gsrnamespace: '6',
-      gsrlimit: '30',
-      prop: 'imageinfo',
-      iiprop: 'url',
-      iiurlwidth: '1024',
-      format: 'json'
-    },
-    headers: HEADERS,
-    timeout: 30000,
-    validateStatus: () => true
-  });
-
-  const pages = Object.values(response.data?.query?.pages || {});
-  return pages
-    .map(page => {
-      const info = page?.imageinfo?.[0] || {};
-      return { image: info.thumburl || info.url, thumbnail: info.thumburl || null, title: page?.title || '' };
-    })
-    .filter(item => /^https?:\/\//i.test(item.image || '') && /\.(jpe?g|png|webp)(\?|$)/i.test(item.image));
-}
-
-async function searchOpenverse(query) {
-  const response = await axios.get('https://api.openverse.org/v1/images/', {
-    params: { q: query, page_size: 20 },
-    headers: HEADERS,
-    timeout: 30000,
-    validateStatus: () => true
-  });
-
-  const results = response.data?.results || [];
-  return results
-    .map(item => ({ image: item.url, thumbnail: item.thumbnail, title: item.title || '' }))
-    .filter(item => /^https?:\/\//i.test(item.image || ''));
-}
-
-function normalize(text) {
-  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
-function scoreResult(query, item) {
-  const q = normalize(query);
-  const tokens = q.split(' ').filter(token => token.length > 2);
-  const haystack = normalize(`${item.title || ''} ${item.image || ''}`);
-
-  let score = 0;
-  if (q && haystack.includes(q)) score += 100;
-  for (const token of tokens) {
-    if (haystack.includes(token)) score += 20;
-  }
-  if (tokens.length && tokens.every(token => haystack.includes(token))) score += 50;
-  return score;
 }
 
 async function downloadImage(url) {
@@ -176,7 +79,7 @@ export const commands = [
   {
     name: 'img',
     aliases: ['image', 'pic'],
-    description: 'Search and send 10 photos for any word.',
+    description: 'Search Google and send 10 photos for any word.',
     category: 'Search',
     execute: async ({ sock, from, text, msg, config }) => {
       const botName = config?.BOT_NAME || 'GM SHAH MD BOT';
@@ -184,52 +87,40 @@ export const commands = [
 
       if (!query) {
         await sock.sendMessage(from, {
-          text: `🖼️ *Image Search*\n\nUsage: \`.img <word>\`\nExample: \`.img cat\`\n\n⚡ Powered by ${botName}`
+          text: `🖼️ *Google Image Search*\n\nUsage: \`.img <word>\`\nExample: \`.img cat\`\n\n⚡ Powered by ${botName}`
         }, { quoted: msg });
         return;
       }
 
       try {
-        await sock.sendMessage(from, { text: `🖼️ Searching photos for: *${query}*` }, { quoted: msg });
+        await sock.sendMessage(from, { text: `🖼️ Searching Google photos for: *${query}*` }, { quoted: msg });
 
-        const sources = [
-          ['Google', searchGoogle],
-          ['Bing', searchBing],
-          ['DuckDuckGo', searchDuckDuckGo],
-          ['Wikimedia', searchWikimedia],
-          ['Openverse', searchOpenverse]
-        ];
-
-        const merged = [];
-        const seen = new Set();
-
-        for (const [name, search] of sources) {
-          try {
-            const found = await search(query);
-            console.log(`Img search ${name}: ${found.length} results for "${query}"`);
-            for (const item of found) {
-              if (!item.image || seen.has(item.image)) continue;
-              seen.add(item.image);
-              merged.push({ ...item, source: name, score: scoreResult(query, item) });
-            }
-          } catch (error) {
-            console.error(`Img search ${name} failed:`, error?.message || error);
-          }
-          if (merged.length >= 30) break;
+        let results = [];
+        try {
+          results = await searchGoogleApi(query);
+          console.log(`Img Google API: ${results.length} results for "${query}"`);
+        } catch (error) {
+          console.error('Img Google API failed:', error?.message || error);
         }
 
-        merged.sort((a, b) => b.score - a.score);
-        console.log(`Img top results for "${query}":`, merged.slice(0, 5).map(item => `${item.source}:${item.score}:${item.title}`).join(' | '));
+        if (!results.length) {
+          try {
+            results = await searchGoogleImages(query);
+            console.log(`Img Google Images: ${results.length} results for "${query}"`);
+          } catch (error) {
+            console.error('Img Google Images failed:', error?.message || error);
+          }
+        }
 
-        if (!merged.length) {
+        if (!results.length) {
           await sock.sendMessage(from, {
-            text: `❌ No photos found for: *${query}*\n\n⚡ Powered by ${botName}`
+            text: `❌ No photos found on Google for: *${query}*\n\n⚡ Powered by ${botName}`
           }, { quoted: msg });
           return;
         }
 
         let sent = 0;
-        for (const item of merged) {
+        for (const item of results) {
           if (sent >= 10) break;
 
           const urls = [item.image, item.thumbnail].filter(Boolean);
