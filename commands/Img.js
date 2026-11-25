@@ -3,8 +3,60 @@ import { API_CONFIG } from '../shah/index.js';
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-  'Accept-Language': 'en-US,en;q=0.9'
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept': 'text/html,application/xhtml+xml'
 };
+
+function cleanUrl(url) {
+  return String(url || '')
+    .replace(/\\u003d/g, '=')
+    .replace(/\\u0026/g, '&')
+    .replace(/\\u002F/gi, '/')
+    .replace(/\\\//g, '/')
+    .replace(/&amp;/g, '&');
+}
+
+function isImageUrl(url) {
+  return /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)
+    || /googleusercontent\.com/i.test(url)
+    || /encrypted-tbn\d*\.gstatic\.com/i.test(url);
+}
+
+function parseGoogleHtml(html) {
+  const originals = [];
+  const thumbnails = [];
+
+  const sizedRegex = /\["(https?:\/\/[^"]+)",(\d+),(\d+)\]/g;
+  let match;
+  while ((match = sizedRegex.exec(html)) !== null && originals.length < 40) {
+    const url = cleanUrl(match[1]);
+    if (/google\.com\/search|accounts\.google|www\.google\.com\/images\/branding/i.test(url)) continue;
+    if (!isImageUrl(url)) continue;
+    if (/encrypted-tbn\d*\.gstatic\.com/i.test(url)) {
+      if (!thumbnails.includes(url)) thumbnails.push(url);
+      continue;
+    }
+    if (!originals.includes(url)) originals.push(url);
+  }
+
+  const imgurlRegex = /imgurl=(https?%3A%2F%2F[^&"']+)/gi;
+  while ((match = imgurlRegex.exec(html)) !== null && originals.length < 40) {
+    try {
+      const url = decodeURIComponent(match[1]);
+      if (isImageUrl(url) && !originals.includes(url)) originals.push(url);
+    } catch (_) {}
+  }
+
+  const thumbRegex = /"(https:\/\/encrypted-tbn\d*\.gstatic\.com\/images\?q=tbn:[^"]+)"/g;
+  while ((match = thumbRegex.exec(html)) !== null && thumbnails.length < 40) {
+    const url = cleanUrl(match[1]);
+    if (!thumbnails.includes(url)) thumbnails.push(url);
+  }
+
+  const results = originals.map((url, index) => ({ image: url, thumbnail: thumbnails[index] || null }));
+  if (!results.length) return thumbnails.map(url => ({ image: url, thumbnail: null }));
+  return results;
+}
 
 async function searchGoogleApi(query) {
   const apiKey = API_CONFIG?.google?.apiKey || process.env.GOOGLE_API_KEY || '';
@@ -25,36 +77,32 @@ async function searchGoogleApi(query) {
 }
 
 async function searchGoogleImages(query) {
-  const response = await axios.get('https://www.google.com/search', {
-    params: { q: query, tbm: 'isch', hl: 'en', safe: 'active' },
-    headers: HEADERS,
-    timeout: 30000,
-    validateStatus: () => true
-  });
+  const attempts = [
+    { name: 'tbm', params: { q: query, tbm: 'isch', hl: 'en', safe: 'active' } },
+    { name: 'udm', params: { q: query, udm: '2', hl: 'en', safe: 'active' } },
+    { name: 'gbv', params: { q: query, tbm: 'isch', gbv: '1', hl: 'en', safe: 'active' } }
+  ];
 
-  const html = String(response.data || '');
-  const originals = [];
-  const thumbnails = [];
+  for (const attempt of attempts) {
+    try {
+      const response = await axios.get('https://www.google.com/search', {
+        params: attempt.params,
+        headers: HEADERS,
+        timeout: 30000,
+        validateStatus: () => true
+      });
 
-  const originalRegex = /\["(https?:\/\/[^"]+?\.(?:jpg|jpeg|png|webp)[^"]*)",\d+,\d+\]/gi;
-  let match;
-  while ((match = originalRegex.exec(html)) !== null && originals.length < 40) {
-    const url = match[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
-    if (/google\.com|gstatic\.com/i.test(url)) continue;
-    if (!originals.includes(url)) originals.push(url);
+      const html = String(response.data || '');
+      const blocked = /\/sorry\/|unusual traffic|captcha|consent\.google/i.test(html) ? ' blocked-page' : '';
+      const results = parseGoogleHtml(html);
+      console.log(`Img Google ${attempt.name}: HTTP ${response.status}, ${html.length} bytes, ${results.length} results${blocked} for "${query}"`);
+      if (results.length) return results;
+    } catch (error) {
+      console.error(`Img Google ${attempt.name} failed:`, error?.message || error);
+    }
   }
 
-  const thumbRegex = /"(https:\/\/encrypted-tbn0\.gstatic\.com\/images\?q=tbn:[^"]+)"/g;
-  while ((match = thumbRegex.exec(html)) !== null && thumbnails.length < 40) {
-    const url = match[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
-    if (!thumbnails.includes(url)) thumbnails.push(url);
-  }
-
-  const results = originals.map((url, index) => ({ image: url, thumbnail: thumbnails[index] || null }));
-  if (!results.length) {
-    return thumbnails.map(url => ({ image: url, thumbnail: null }));
-  }
-  return results;
+  return [];
 }
 
 async function downloadImage(url) {
@@ -104,12 +152,7 @@ export const commands = [
         }
 
         if (!results.length) {
-          try {
-            results = await searchGoogleImages(query);
-            console.log(`Img Google Images: ${results.length} results for "${query}"`);
-          } catch (error) {
-            console.error('Img Google Images failed:', error?.message || error);
-          }
+          results = await searchGoogleImages(query);
         }
 
         if (!results.length) {
