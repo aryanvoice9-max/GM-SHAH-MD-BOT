@@ -8,9 +8,9 @@ const BASE_URL = 'https://noobs-api.top';
 
 export const commands = [
   {
-    name: 'attp',
+    name: 'attpapi',
     aliases: ['attp-sticker'],
-    description: 'Converts text into an ATTP sticker.',
+    description: 'Converts text into an ATTP sticker using API.',
     category: 'User',
     execute: async ({ sock, from, text, msg, config }) => {
       const botName = config.BOT_NAME || 'GM SHAH MD BOT';
@@ -26,7 +26,7 @@ export const commands = [
       try {
         const packname = msg.pushName || botName;
         const stickerMess = new Sticker(gifUrl, {
-          pack: 'GM Shah MD bot 678',
+          pack: botName,
           author: 'GM Shah MD',
           type: StickerTypes.FULL,
           categories: ['🤩', '🎉'],
@@ -93,7 +93,7 @@ export const commands = [
         
         for (let gif of gifs) {
           const sticker = new Sticker(gif.media_formats.gif.url, {
-            pack: 'GM Shah MD bot 678',
+            pack: botName,
             author: 'GM Shah MD',
             type: StickerTypes.FULL,
             quality: 60,
