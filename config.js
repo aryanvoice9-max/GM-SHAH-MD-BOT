@@ -43,7 +43,8 @@ const CONFIG = {
   OWNER_NAME: process.env.OWNER_NAME || 'GM Shah MD',
   BOT_NAME: process.env.BOT_NAME || 'GM SHAH MD BOT',
   BOT_VERSION: process.env.BOT_VERSION || '3.0.0',
-  MENU_IMAGES: parseMenuImages(process.env.MENU_IMAGES || '')
+  MENU_IMAGES: parseMenuImages(process.env.MENU_IMAGES || ''),
+  WHATSAPP_CHANNEL_LINK: process.env.WHATSAPP_CHANNEL_LINK || 'https://whatsapp.com/channel/0029VaaQzsnLCoX7eCKhOE19'
 }
 
 export default CONFIG

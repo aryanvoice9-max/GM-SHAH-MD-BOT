@@ -38,6 +38,16 @@
 
 ---
 
+## Official WhatsApp Channel
+
+Join the official **GM SHAH MD BOT** WhatsApp channel for updates:
+
+<p align="center">
+  <a href="https://whatsapp.com/channel/0029VaaQzsnLCoX7eCKhOE19"><img src="https://img.shields.io/badge/JOIN_WHATSAPP_CHANNEL-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" alt="Join WhatsApp Channel"/></a>
+</p>
+
+---
+
 ## Deployment Steps
 
 First, star and fork this repository:

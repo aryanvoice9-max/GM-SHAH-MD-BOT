@@ -522,11 +522,6 @@ async function start() {
                   contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,
-                    forwardedNewsletterMessageInfo: {
-                      newsletterJid: '120363238139244263@newsletter',
-                      newsletterName: 'GM SHAH MD BOT',
-                      serverMessageId: -1
-                    }
                   }
                 })
                 console.log(`✅ Start message sent to owner: ${ownerJid}`)
