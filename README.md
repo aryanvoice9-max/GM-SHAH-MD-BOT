@@ -129,6 +129,7 @@ Deploy **GM SHAH MD BOT** on your favorite hosting platform:
 | `WEATHER_API_KEY` | Optional, for weather |
 | `IMGBB_API_KEY` | Optional, for image uploads |
 | `LEPTON_API_KEY` | Optional, for AI fallback |
+| `REMOVEBG_API_KEY` | Optional, for `.removebg` background removal |
 
 See [`.env-sample`](.env-sample) for the full list. Keep every key in environment variables, never in code.
 
@@ -147,6 +148,7 @@ See [`.env-sample`](.env-sample) for the full list. Keep every key in environmen
 | Sticker maker and media converters | Active |
 | ATTP blinking text stickers (`.attp`) | Active |
 | Auto heart reactions (`.areact on/off`) | Active |
+| Background remover (`.removebg`) | Active |
 | Fun commands and games | Active |
 | Search: web, lyrics, weather, country | Active |
 | Auto read, auto view, auto like | Active |
