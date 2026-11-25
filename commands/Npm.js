@@ -53,11 +53,6 @@ export const commands = [
           contextInfo: {
             forwardingScore: 1,
             isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-              newsletterJid: '120363238139244263@newsletter',
-              newsletterName: botName,
-              serverMessageId: -1
-            }
           }
         }, { quoted: msg });
       } catch (error) {

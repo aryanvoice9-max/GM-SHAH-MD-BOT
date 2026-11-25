@@ -45,11 +45,6 @@ _Don't forget to fork 🍴 and watch 👀 for updates!_`;
           contextInfo: {
             forwardingScore: 1,
             isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-              newsletterJid: '120363238139244263@newsletter',
-              newsletterName: botName,
-              serverMessageId: -1
-            }
           }
         }, { quoted: msg });
 
@@ -66,11 +61,6 @@ Could not retrieve GM SHAH MD BOT repository information at this time.
           contextInfo: {
             forwardingScore: 1,
             isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-              newsletterJid: '120363238139244263@newsletter',
-              newsletterName: botName,
-              serverMessageId: -1
-            }
           }
         }, { quoted: msg });
       }

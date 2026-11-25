@@ -210,7 +210,8 @@ export const commands = [
                 menuText += `   *Released: 22.2.2024*\n\n`;
                 menuText += ` _Thanks For choosing ${botName}_\n\n`;
                 menuText += `  Created by *${ownerName} ©2024*\n\n`;
-                menuText += `     *KEEP USING ${botName}*\n`;
+                menuText += `     *KEEP USING ${botName}*\n\n`;
+                menuText += `📢 *WhatsApp Channel:* https://whatsapp.com/channel/0029VaaQzsnLCoX7eCKhOE19\n`;
 
                 const localMenuImage = fs.existsSync('./assets/menu.jpg')
                     ? fs.readFileSync('./assets/menu.jpg')
@@ -240,11 +241,6 @@ export const commands = [
                             forwardingScore: 1,
                             isForwarded: true,
 
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363238139244263@newsletter',
-                                newsletterName: botName,
-                                serverMessageId: -1
-                            }
                         }
 
                     }, { quoted: msg });
@@ -259,11 +255,6 @@ export const commands = [
                             forwardingScore: 1,
                             isForwarded: true,
 
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363238139244263@newsletter',
-                                newsletterName: botName,
-                                serverMessageId: -1
-                            }
                         }
 
                     }, { quoted: msg });
@@ -395,11 +386,6 @@ export const commands = [
                         forwardingScore: 1,
                         isForwarded: true,
 
-                        forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363238139244263@newsletter',
-                            newsletterName: botName,
-                            serverMessageId: -1
-                        }
                     }
 
                 }, { quoted: msg });
