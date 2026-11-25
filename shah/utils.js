@@ -7,7 +7,7 @@ import { tmpdir } from 'os';
 import util from 'util';
 import axios from 'axios';
 
-export const NEWSLETTER_JID = '120363238139244263@newsletter';
+export const CHANNEL_LINK = 'https://whatsapp.com/channel/0029VaaQzsnLCoX7eCKhOE19';
 export const NEWSLETTER_NAME = 'GM SHAH MD BOT';
 
 export function normalizeJid(jid) {
