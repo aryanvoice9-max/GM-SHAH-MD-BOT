@@ -55,7 +55,7 @@ async function searchGoogleApi(query) {
 
 async function searchBing(query) {
   const response = await axios.get('https://www.bing.com/images/search', {
-    params: { q: query, form: 'HDRSC2', first: '1' },
+    params: { q: query, form: 'HDRSC2', first: '1', adlt: 'off' },
     headers: { ...HEADERS, Referer: 'https://www.bing.com/' },
     timeout: 30000,
     validateStatus: () => true
@@ -114,7 +114,7 @@ async function searchDuckDuckGo(query) {
   if (!vqd) return [];
 
   const response = await axios.get('https://duckduckgo.com/i.js', {
-    params: { l: 'us-en', o: 'json', q: query, vqd, f: ',,,,,', p: '1', s: '0' },
+    params: { l: 'us-en', o: 'json', q: query, vqd, f: ',,,,,', p: '-1', s: '0' },
     headers: { ...HEADERS, Referer: 'https://duckduckgo.com/' },
     timeout: 30000,
     validateStatus: () => true
@@ -263,8 +263,10 @@ export const commands = [
           if (merged.length >= 40) break;
         }
 
-        const matched = merged.filter(item => item.score >= 20);
-        const results = (matched.length ? matched : merged).sort((a, b) => b.score - a.score);
+        const tokens = normalize(query).split(' ').filter(token => token.length > 2);
+        const strict = merged.filter(item => tokens.length <= 1 ? item.score >= 20 : item.score >= 90);
+        const partial = merged.filter(item => item.score >= 40);
+        const results = (strict.length ? strict : partial).sort((a, b) => b.score - a.score);
         console.log(`Img top results for "${query}":`, results.slice(0, 5).map(item => `${item.source}:${item.score}:${item.title}`).join(' | '));
 
         if (!results.length) {
