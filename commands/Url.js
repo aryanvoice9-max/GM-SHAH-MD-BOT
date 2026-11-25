@@ -3,7 +3,7 @@ import FormData from 'form-data';
 import fs from 'fs-extra';
 import path from 'path';
 import { downloadContentFromMessage } from '@whiskeysockets/baileys';
-import { t } from '../france/translator.js';
+import { t } from '../shah/translator.js';
 
 async function uploadToImgBB(filePath) {
   const buffer = await fs.readFile(filePath);

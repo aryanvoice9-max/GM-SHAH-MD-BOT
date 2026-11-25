@@ -1,8 +1,8 @@
 import { S_WHATSAPP_NET } from '@whiskeysockets/baileys';
 import * as Jimp from 'jimp';
 import { Sticker, StickerTypes } from 'wa-sticker-formatter';
-import { formatJid, getSenderJid, MESSAGES, protectOwner } from '../france/index.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { formatJid, getSenderJid, MESSAGES, protectOwner } from '../shah/index.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 let isStatusFetching = false;
 let fetchInterval = null;

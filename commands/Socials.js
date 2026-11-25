@@ -1,5 +1,5 @@
-import { googleSearch, getGithubUser, MESSAGES } from '../france/index.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { googleSearch, getGithubUser, MESSAGES } from '../shah/index.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 export const commands = [
   {

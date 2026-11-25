@@ -1,6 +1,6 @@
 import { downloadMediaMessage } from '@whiskeysockets/baileys';
-import { geminiVision2, MESSAGES } from '../france/index.js';
-import { t, translate, translateAIResponse, getUserLang } from '../france/translator.js';
+import { geminiVision2, MESSAGES } from '../shah/index.js';
+import { t, translate, translateAIResponse, getUserLang } from '../shah/translator.js';
 
 export const commands = [
   {
